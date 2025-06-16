@@ -40,7 +40,7 @@ aws-lc-rs = { version = "1.7", optional = true }
 stringprep = { version = "0.1.2", optional = true }
 x509-certificate = { version = "0.24", optional = true }
 ## types
-postgres-types = { version = "0.2", features = [
+postgres-types = { git = "https://github.com/tempest98/rust-postgres", features = [
     "with-chrono-0_4",
     "array-impls",
 ], optional = true }
