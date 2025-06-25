@@ -21,7 +21,7 @@ use crate::api::client::{ClientInfo, Config, ReadyState, ServerInformation};
 use crate::error::{PgWireClientError, PgWireClientResult, PgWireError};
 use crate::messages::{PgWireBackendMessage, PgWireFrontendMessage};
 
-#[non_exhaustive]
+// #[non_exhaustive]
 #[derive(Debug)]
 pub struct PgWireMessageClientCodec;
 
