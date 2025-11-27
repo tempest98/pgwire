@@ -27,7 +27,7 @@ use crate::messages::response::{SslResponse, TransactionStatus};
 use crate::messages::startup::{SslRequest, Startup};
 use crate::messages::{Message, PgWireBackendMessage, PgWireFrontendMessage};
 
-// #[non_exhaustive]
+#[non_exhaustive]
 #[derive(Debug, new)]
 pub struct PgWireMessageServerCodec<S> {
     pub client_info: DefaultClient<S>,

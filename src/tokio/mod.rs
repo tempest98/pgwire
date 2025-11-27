@@ -2,7 +2,7 @@
 pub mod client;
 
 #[cfg(feature = "server-api")]
-pub mod server;
+mod server;
 
 #[cfg(feature = "server-api")]
 pub use server::process_socket;
