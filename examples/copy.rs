@@ -9,8 +9,7 @@ use pgwire::api::copy::CopyHandler;
 use pgwire::api::query::SimpleQueryHandler;
 use pgwire::api::results::{CopyResponse, Response};
 use pgwire::api::{ClientInfo, PgWireConnectionState, PgWireServerHandlers};
-use pgwire::error::ErrorInfo;
-use pgwire::error::{PgWireError, PgWireResult};
+use pgwire::error::{ErrorInfo, PgWireError, PgWireResult};
 use pgwire::messages::copy::{CopyData, CopyDone, CopyFail};
 use pgwire::messages::response::NoticeResponse;
 use pgwire::messages::PgWireBackendMessage;
@@ -20,7 +19,7 @@ pub struct DummyProcessor;
 
 #[async_trait]
 impl SimpleQueryHandler for DummyProcessor {
-    async fn do_query<'a, C>(&self, client: &mut C, query: &str) -> PgWireResult<Vec<Response<'a>>>
+    async fn do_query<C>(&self, client: &mut C, query: &str) -> PgWireResult<Vec<Response>>
     where
         C: ClientInfo + Sink<PgWireBackendMessage> + Unpin + Send + Sync,
         C::Error: Debug,

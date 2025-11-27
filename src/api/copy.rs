@@ -42,7 +42,7 @@ pub trait CopyHandler: Send + Sync {
 
 pub async fn send_copy_in_response<C>(client: &mut C, resp: CopyResponse) -> PgWireResult<()>
 where
-    C: ClientInfo + Sink<PgWireBackendMessage> + Unpin + Send + Sync,
+    C: Sink<PgWireBackendMessage> + Unpin,
     C::Error: Debug,
     PgWireError: From<<C as Sink<PgWireBackendMessage>>::Error>,
 {
@@ -55,7 +55,7 @@ where
 
 pub async fn send_copy_out_response<C>(client: &mut C, resp: CopyResponse) -> PgWireResult<()>
 where
-    C: ClientInfo + Sink<PgWireBackendMessage> + Unpin + Send + Sync,
+    C: Sink<PgWireBackendMessage> + Unpin,
     C::Error: Debug,
     PgWireError: From<<C as Sink<PgWireBackendMessage>>::Error>,
 {
@@ -68,7 +68,7 @@ where
 
 pub async fn send_copy_both_response<C>(client: &mut C, resp: CopyResponse) -> PgWireResult<()>
 where
-    C: ClientInfo + Sink<PgWireBackendMessage> + Unpin + Send + Sync,
+    C: Sink<PgWireBackendMessage> + Unpin,
     C::Error: Debug,
     PgWireError: From<<C as Sink<PgWireBackendMessage>>::Error>,
 {
@@ -87,7 +87,11 @@ impl CopyHandler for super::NoopHandler {
         C::Error: Debug,
         PgWireError: From<<C as Sink<PgWireBackendMessage>>::Error>,
     {
-        Ok(())
+        Err(PgWireError::UserError(Box::new(ErrorInfo::new(
+            "FATAL".to_owned(),
+            "08P01".to_owned(),
+            "This feature is not implemented.".to_string(),
+        ))))
     }
 
     async fn on_copy_done<C>(&self, _client: &mut C, _done: CopyDone) -> PgWireResult<()>
@@ -96,6 +100,10 @@ impl CopyHandler for super::NoopHandler {
         C::Error: Debug,
         PgWireError: From<<C as Sink<PgWireBackendMessage>>::Error>,
     {
-        Ok(())
+        Err(PgWireError::UserError(Box::new(ErrorInfo::new(
+            "FATAL".to_owned(),
+            "08P01".to_owned(),
+            "This feature is not implemented.".to_string(),
+        ))))
     }
 }

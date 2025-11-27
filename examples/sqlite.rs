@@ -1,10 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use futures::stream;
-use futures::Stream;
-use rusqlite::Rows;
-use rusqlite::{types::ValueRef, Connection, Statement, ToSql};
+use futures::{stream, Stream};
+use rusqlite::types::ValueRef;
+use rusqlite::{Connection, Rows, Statement, ToSql};
 use tokio::net::TcpListener;
 
 use pgwire::api::auth::md5pass::{hash_md5_password, Md5PasswordAuthStartupHandler};
@@ -28,6 +27,7 @@ pub struct SqliteBackend {
     query_parser: Arc<NoopQueryParser>,
 }
 
+#[derive(Debug)]
 struct DummyAuthSource;
 
 #[async_trait]
@@ -46,7 +46,7 @@ impl AuthSource for DummyAuthSource {
 
 #[async_trait]
 impl SimpleQueryHandler for SqliteBackend {
-    async fn do_query<'a, C>(&self, _client: &mut C, query: &str) -> PgWireResult<Vec<Response<'a>>>
+    async fn do_query<C>(&self, _client: &mut C, query: &str) -> PgWireResult<Vec<Response>>
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
@@ -65,9 +65,7 @@ impl SimpleQueryHandler for SqliteBackend {
         } else {
             conn.execute(query, ())
                 .map(|affected_rows| {
-                    vec![Response::Execution(
-                        Tag::new("OK").with_rows(affected_rows).into(),
-                    )]
+                    vec![Response::Execution(Tag::new("OK").with_rows(affected_rows))]
                 })
                 .map_err(|e| PgWireError::ApiError(Box::new(e)))
         }
@@ -142,13 +140,19 @@ fn encode_row_data(
         results.push(encoder.finish());
     }
 
-    stream::iter(results.into_iter())
+    stream::iter(results)
 }
 
 fn get_params(portal: &Portal<String>) -> Vec<Box<dyn ToSql>> {
     let mut results = Vec::with_capacity(portal.parameter_len());
     for i in 0..portal.parameter_len() {
-        let param_type = portal.statement.parameter_types.get(i).unwrap();
+        let param_type = portal
+            .statement
+            .parameter_types
+            .get(i)
+            .unwrap()
+            .as_ref()
+            .unwrap_or(&Type::UNKNOWN);
         // we only support a small amount of types for demo
         match param_type {
             &Type::BOOL => {
@@ -197,12 +201,12 @@ impl ExtendedQueryHandler for SqliteBackend {
         self.query_parser.clone()
     }
 
-    async fn do_query<'a, C>(
+    async fn do_query<C>(
         &self,
         _client: &mut C,
         portal: &Portal<Self::Statement>,
         _max_rows: usize,
-    ) -> PgWireResult<Response<'a>>
+    ) -> PgWireResult<Response>
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
@@ -227,9 +231,7 @@ impl ExtendedQueryHandler for SqliteBackend {
                 .map_err(|e| PgWireError::ApiError(Box::new(e)))
         } else {
             stmt.execute::<&[&dyn rusqlite::ToSql]>(params_ref.as_ref())
-                .map(|affected_rows| {
-                    Response::Execution(Tag::new("OK").with_rows(affected_rows).into())
-                })
+                .map(|affected_rows| Response::Execution(Tag::new("OK").with_rows(affected_rows)))
                 .map_err(|e| PgWireError::ApiError(Box::new(e)))
         }
     }
@@ -243,7 +245,11 @@ impl ExtendedQueryHandler for SqliteBackend {
         C: ClientInfo + Unpin + Send + Sync,
     {
         let conn = self.conn.lock().unwrap();
-        let param_types = stmt.parameter_types.clone();
+        let param_types = stmt
+            .parameter_types
+            .iter()
+            .map(|t| t.clone().unwrap_or(Type::UNKNOWN))
+            .collect();
         let stmt = conn
             .prepare_cached(&stmt.statement)
             .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
@@ -263,8 +269,7 @@ impl ExtendedQueryHandler for SqliteBackend {
         let stmt = conn
             .prepare_cached(&portal.statement.statement)
             .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-        row_desc_from_stmt(&stmt, &portal.result_column_format)
-            .map(|fields| DescribePortalResponse::new(fields))
+        row_desc_from_stmt(&stmt, &portal.result_column_format).map(DescribePortalResponse::new)
     }
 }
 

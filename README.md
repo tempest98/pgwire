@@ -19,6 +19,8 @@ this library.
 
 - Message format
   - [x] Frontend-Backend protocol messages
+    - [x] 3.0
+    - [x] 3.2, Postgres 18
   - [ ] Streaming replication protocol
   - [ ] Logical streaming replication protocol message
 - [x] Backend TCP/TLS server on Tokio
@@ -26,14 +28,16 @@ this library.
 - Frontend-Backend interaction over TCP
   - [x] SSL Request and Response
     - [x] PostgreSQL 17 direct SSL negotiation
+  - [x] GSSAPI Request and Response: GSSAPI encryption is not supported
   - [x] Startup
+    - [x] Protocol negotiation
     - [x] No authentication
     - [x] Clear-text password authentication
     - [x] Md5 Password authentication
-    - [x] SASL SCRAM authentication (optional feature `server-api-scram-ring` or
-          `server-api-scram-aws-lc-rs`)
+    - [x] SASL SCRAM authentication
       - [x] SCRAM-SHA-256
       - [x] SCRAM-SHA-256-PLUS
+    - [ ] SASL OAUTH
   - [x] Simple Query and Response
   - [x] Extended Query and Response
     - [x] Parse
@@ -124,9 +128,8 @@ Examples are provided to demo the very basic usage of `pgwire` on server side:
   it with postgresql protocol. This is a full example with both simple and
   extended query implementation. `cargo run --features _sqlite --example
   sqlite`
-- `examples/duckdb.rs`: similar to sqlite example but with duckdb backend. Note
-  that not all data types are implemented in this example. `cargo run --features
-  _duckdb --example duckdb`
+- `examples/duckdb.rs`: Now moved to
+  [arrow-pg](https://github.com/datafusion-contrib/datafusion-postgres)
 - `examples/gluesql.rs`: uses an in-memory
   [gluesql](https://github.com/gluesql/gluesql) at its core and serves
   it with postgresql protocol.
@@ -163,8 +166,22 @@ application development, you can use
   building, deploying and maintaining data products.
 * [restate](https://github.com/restatedev/restate) Framework for building
   resilient workflow
+* [pg_catalog](https://github.com/ybrs/pg_catalog) Provides a postgres
+compatibility layer for custom databases.
 
 Submit a pull request if your project isn't listed here.
+
+## Community
+
+### Developer Mailing List
+
+If you like the idea of pgwire and want to join the development of the library,
+or its ecosystem integrations, extensions, you are welcomed to join our
+developer mailing list: https://groups.io/g/pgwire-dev/
+
+### Github Discussion
+
+Github discussion of this repo is also open for more generate questions.
 
 ## License
 

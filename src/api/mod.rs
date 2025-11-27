@@ -10,6 +10,8 @@ use rustls_pki_types::CertificateDer;
 
 use crate::error::PgWireError;
 use crate::messages::response::TransactionStatus;
+use crate::messages::startup::SecretKey;
+use crate::messages::ProtocolVersion;
 
 pub mod auth;
 pub mod cancel;
@@ -43,9 +45,13 @@ pub trait ClientInfo {
 
     fn is_secure(&self) -> bool;
 
-    fn pid_and_secret_key(&self) -> (i32, i32);
+    fn protocol_version(&self) -> ProtocolVersion;
 
-    fn set_pid_and_secret_key(&mut self, pid: i32, secret_key: i32);
+    fn set_protocol_version(&mut self, version: ProtocolVersion);
+
+    fn pid_and_secret_key(&self) -> (i32, SecretKey);
+
+    fn set_pid_and_secret_key(&mut self, pid: i32, secret_key: SecretKey);
 
     fn state(&self) -> PgWireConnectionState;
 
@@ -60,6 +66,9 @@ pub trait ClientInfo {
     fn metadata_mut(&mut self) -> &mut HashMap<String, String>;
 
     #[cfg(any(feature = "_ring", feature = "_aws-lc-rs"))]
+    fn sni_server_name(&self) -> Option<&str>;
+
+    #[cfg(any(feature = "_ring", feature = "_aws-lc-rs"))]
     fn client_certificates<'a>(&self) -> Option<&[CertificateDer<'a>]>;
 }
 
@@ -72,16 +81,21 @@ pub trait ClientPortalStore {
 
 pub const METADATA_USER: &str = "user";
 pub const METADATA_DATABASE: &str = "database";
+pub const METADATA_CLIENT_ENCODING: &str = "client_encoding";
+pub const METADATA_APPLICATION_NAME: &str = "application_name";
 
 #[non_exhaustive]
 #[derive(Debug)]
 pub struct DefaultClient<S> {
     pub socket_addr: SocketAddr,
     pub is_secure: bool,
-    pub pid_secret_key: (i32, i32),
+    pub protocol_version: ProtocolVersion,
+    pub pid_secret_key: (i32, SecretKey),
     pub state: PgWireConnectionState,
     pub transaction_status: TransactionStatus,
     pub metadata: HashMap<String, String>,
+    #[cfg(any(feature = "_ring", feature = "_aws-lc-rs"))]
+    pub sni_server_name: Option<String>,
     pub portal_store: store::MemPortalStore<S>,
 }
 
@@ -94,12 +108,20 @@ impl<S> ClientInfo for DefaultClient<S> {
         self.is_secure
     }
 
-    fn pid_and_secret_key(&self) -> (i32, i32) {
-        self.pid_secret_key
+    fn pid_and_secret_key(&self) -> (i32, SecretKey) {
+        self.pid_secret_key.clone()
     }
 
-    fn set_pid_and_secret_key(&mut self, pid: i32, secret_key: i32) {
+    fn set_pid_and_secret_key(&mut self, pid: i32, secret_key: SecretKey) {
         self.pid_secret_key = (pid, secret_key);
+    }
+
+    fn protocol_version(&self) -> ProtocolVersion {
+        self.protocol_version
+    }
+
+    fn set_protocol_version(&mut self, version: ProtocolVersion) {
+        self.protocol_version = version;
     }
 
     fn state(&self) -> PgWireConnectionState {
@@ -127,6 +149,11 @@ impl<S> ClientInfo for DefaultClient<S> {
     }
 
     #[cfg(any(feature = "_ring", feature = "_aws-lc-rs"))]
+    fn sni_server_name(&self) -> Option<&str> {
+        self.sni_server_name.as_deref()
+    }
+
+    #[cfg(any(feature = "_ring", feature = "_aws-lc-rs"))]
     fn client_certificates<'a>(&self) -> Option<&[CertificateDer<'a>]> {
         None
     }
@@ -137,10 +164,13 @@ impl<S> DefaultClient<S> {
         DefaultClient {
             socket_addr,
             is_secure,
-            pid_secret_key: (0, 0),
+            protocol_version: ProtocolVersion::default(),
+            pid_secret_key: (0, SecretKey::default()),
             state: PgWireConnectionState::default(),
             transaction_status: TransactionStatus::Idle,
             metadata: HashMap::new(),
+            #[cfg(any(feature = "_ring", feature = "_aws-lc-rs"))]
+            sni_server_name: None,
             portal_store: store::MemPortalStore::new(),
         }
     }

@@ -1,23 +1,20 @@
 use std::fmt::Debug;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use bytes::{BufMut, BytesMut};
-use futures::{
-    stream::{BoxStream, StreamExt},
-    Stream,
-};
+use futures::Stream;
 use postgres_types::{IsNull, Oid, ToSql, Type};
 
-use crate::{
-    error::{ErrorInfo, PgWireResult},
-    messages::{
-        data::{DataRow, FieldDescription, RowDescription, FORMAT_CODE_BINARY, FORMAT_CODE_TEXT},
-        response::CommandComplete,
-    },
-    types::ToSqlText,
+use crate::error::{ErrorInfo, PgWireResult};
+use crate::messages::data::{
+    DataRow, FieldDescription, RowDescription, FORMAT_CODE_BINARY, FORMAT_CODE_TEXT,
 };
+use crate::messages::response::CommandComplete;
+use crate::types::format::FormatOptions;
+use crate::types::ToSqlText;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Clone)]
 pub struct Tag {
     command: String,
     oid: Option<Oid>,
@@ -93,6 +90,8 @@ pub struct FieldInfo {
     column_id: Option<i16>,
     datatype: Type,
     format: FieldFormat,
+    #[new(default)]
+    format_options: Arc<FormatOptions>,
 }
 
 impl FieldInfo {
@@ -114,6 +113,15 @@ impl FieldInfo {
 
     pub fn format(&self) -> FieldFormat {
         self.format
+    }
+
+    pub fn format_options(&self) -> &Arc<FormatOptions> {
+        &self.format_options
+    }
+
+    pub fn with_format_options(mut self, format_options: Arc<FormatOptions>) -> Self {
+        self.format_options = format_options;
+        self
     }
 }
 
@@ -148,23 +156,34 @@ pub(crate) fn into_row_description(fields: &[FieldInfo]) -> RowDescription {
     RowDescription::new(fields.iter().map(Into::into).collect())
 }
 
-pub struct QueryResponse<'a> {
+pub type SendableRowStream = Pin<Box<dyn Stream<Item = PgWireResult<DataRow>> + Send>>;
+
+pub struct QueryResponse {
     command_tag: String,
     row_schema: Arc<Vec<FieldInfo>>,
-    data_rows: BoxStream<'a, PgWireResult<DataRow>>,
+    data_rows: SendableRowStream,
 }
 
-impl<'a> QueryResponse<'a> {
+impl Debug for QueryResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QueryResponse")
+            .field("command_tag", &self.command_tag)
+            .field("row_schema", &self.row_schema)
+            .finish()
+    }
+}
+
+impl QueryResponse {
     /// Create `QueryResponse` from column schemas and stream of data row.
     /// Sets "SELECT" as the command tag.
-    pub fn new<S>(field_defs: Arc<Vec<FieldInfo>>, row_stream: S) -> QueryResponse<'a>
+    pub fn new<S>(field_defs: Arc<Vec<FieldInfo>>, row_stream: S) -> QueryResponse
     where
-        S: Stream<Item = PgWireResult<DataRow>> + Send + Unpin + 'a,
+        S: Stream<Item = PgWireResult<DataRow>> + Send + 'static,
     {
         QueryResponse {
             command_tag: "SELECT".to_owned(),
             row_schema: field_defs,
-            data_rows: row_stream.boxed(),
+            data_rows: Box::pin(row_stream),
         }
     }
 
@@ -183,9 +202,9 @@ impl<'a> QueryResponse<'a> {
         self.row_schema.clone()
     }
 
-    /// Get owned `BoxStream` of data rows
-    pub fn data_rows(self) -> BoxStream<'a, PgWireResult<DataRow>> {
-        self.data_rows
+    /// Get access to data rows stream
+    pub fn data_rows(&mut self) -> &mut SendableRowStream {
+        &mut self.data_rows
     }
 }
 
@@ -214,6 +233,7 @@ impl DataRowEncoder {
         value: &T,
         data_type: &Type,
         format: FieldFormat,
+        format_options: &FormatOptions,
     ) -> PgWireResult<()>
     where
         T: ToSql + ToSqlText + Sized,
@@ -224,7 +244,7 @@ impl DataRowEncoder {
         self.row_buffer.put_i32(-1);
 
         let is_null = if format == FieldFormat::Text {
-            value.to_sql_text(data_type, &mut self.row_buffer)?
+            value.to_sql_text(data_type, &mut self.row_buffer, format_options)?
         } else {
             value.to_sql(data_type, &mut self.row_buffer)?
         };
@@ -247,10 +267,13 @@ impl DataRowEncoder {
     where
         T: ToSql + ToSqlText + Sized,
     {
-        let data_type = self.schema[self.col_index].datatype().clone();
-        let format = self.schema[self.col_index].format();
+        let field = &self.schema[self.col_index];
 
-        self.encode_field_with_type_and_format(value, &data_type, format)
+        let data_type = field.datatype().clone();
+        let format = field.format();
+        let format_options = field.format_options().clone();
+
+        self.encode_field_with_type_and_format(value, &data_type, format, format_options.as_ref())
     }
 
     pub fn finish(self) -> PgWireResult<DataRow> {
@@ -352,9 +375,10 @@ pub struct CopyResponse {
 /// * CopyIn: response for a copy-in request
 /// * CopyOut: response for a copy-out request
 /// * CopuBoth: response for a copy-both request
-pub enum Response<'a> {
+#[derive(Debug)]
+pub enum Response {
     EmptyQuery,
-    Query(QueryResponse<'a>),
+    Query(QueryResponse),
     Execution(Tag),
     TransactionStart(Tag),
     TransactionEnd(Tag),
@@ -366,7 +390,6 @@ pub enum Response<'a> {
 
 #[cfg(test)]
 mod test {
-    use std::time::SystemTime;
 
     use super::*;
 
@@ -384,7 +407,10 @@ mod test {
     }
 
     #[test]
+    #[cfg(feature = "pg-type-chrono")]
     fn test_data_row_encoder() {
+        use std::time::SystemTime;
+
         let schema = Arc::new(vec![
             FieldInfo::new("id".into(), None, None, Type::INT4, FieldFormat::Text),
             FieldInfo::new("name".into(), None, None, Type::VARCHAR, FieldFormat::Text),
@@ -406,7 +432,7 @@ mod test {
         expected.put_i32(4);
         expected.put_slice("udev".as_bytes());
         expected.put_i32(26);
-        let _ = now.to_sql_text(&Type::TIMESTAMP, &mut expected);
+        let _ = now.to_sql_text(&Type::TIMESTAMP, &mut expected, &FormatOptions::default());
         assert_eq!(row.data, expected);
     }
 }

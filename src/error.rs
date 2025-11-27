@@ -6,20 +6,34 @@ use crate::messages::response::{ErrorResponse, NoticeResponse};
 
 #[derive(Error, Debug)]
 pub enum PgWireError {
-    #[error("Invalid protocol version, received {0}")]
-    InvalidProtocolVersion(i32),
+    #[error("Unsupported protocol version, received {0}.{1}")]
+    UnsupportedProtocolVersion(u16, u16),
     #[error("Invalid CancelRequest message, code mismatch")]
     InvalidCancelRequest,
+    #[error("Secret key length must be in [4, 256]")]
+    InvalidSecretKey,
     #[error("Invalid message recevied, received {0}")]
     InvalidMessageType(u8),
+    #[error("Invalid message length, expected max {0}, actual: {1}")]
+    MessageTooLarge(usize, usize),
     #[error("Invalid target type, received {0}")]
     InvalidTargetType(u8),
     #[error("Invalid transaction status, received {0}")]
     InvalidTransactionStatus(u8),
+    #[error("Invalid ssl request message")]
+    InvalidSSLRequestMessage,
+    #[error("Invalid gss encrypt request message")]
+    InvalidGssEncRequestMessage,
     #[error("Invalid startup message")]
     InvalidStartupMessage,
     #[error("Invalid authentication message code: {0}")]
     InvalidAuthenticationMessageCode(i32),
+    #[error("Invalid password message type, failed to coerce")]
+    FailedToCoercePasswordMessage,
+    #[error("Invalid SASL state")]
+    InvalidSASLState,
+    #[error("Unsupported SASL authentication method {0}")]
+    UnsupportedSASLAuthMethod(String),
     #[error(transparent)]
     IoError(#[from] std::io::Error),
     #[error("Portal not found for name: {0}")]
@@ -28,7 +42,7 @@ pub enum PgWireError {
     StatementNotFound(String),
     #[error("Parameter index out of bound: {0}")]
     ParameterIndexOutOfBound(usize),
-    #[error("Cannot convert postgre type {0} to given rust type")]
+    #[error("Cannot convert postgres type {0} to given rust type")]
     InvalidRustTypeForParameter(String),
     #[error("Failed to parse parameter: {0}")]
     FailedToParseParameter(Box<dyn std::error::Error + Send + Sync>),
@@ -42,6 +56,8 @@ pub enum PgWireError {
     UserNameRequired,
     #[error("Connection is not ready for query")]
     NotReadyForQuery,
+    #[error("Invalid option value {0}")]
+    InvalidOptionValue(String),
 
     #[error(transparent)]
     ApiError(#[from] Box<dyn std::error::Error + 'static + Send + Sync>),
@@ -224,7 +240,7 @@ impl From<ErrorInfo> for NoticeResponse {
 impl From<PgWireError> for ErrorInfo {
     fn from(error: PgWireError) -> Self {
         match error {
-            PgWireError::InvalidProtocolVersion(_) => {
+            PgWireError::UnsupportedProtocolVersion(_, _) => {
                 ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
             }
             PgWireError::InvalidCancelRequest => {
@@ -236,13 +252,31 @@ impl From<PgWireError> for ErrorInfo {
             PgWireError::InvalidTargetType(_) => {
                 ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
             }
+            PgWireError::MessageTooLarge(..) => {
+                ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
+            }
             PgWireError::InvalidTransactionStatus(_) => {
+                ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
+            }
+            PgWireError::InvalidSSLRequestMessage => {
+                ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
+            }
+            PgWireError::InvalidGssEncRequestMessage => {
                 ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
             }
             PgWireError::InvalidStartupMessage => {
                 ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
             }
             PgWireError::InvalidAuthenticationMessageCode(_) => {
+                ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
+            }
+            PgWireError::FailedToCoercePasswordMessage => {
+                ErrorInfo::new("FATAL".to_owned(), "XX000".to_owned(), error.to_string())
+            }
+            PgWireError::InvalidSASLState => {
+                ErrorInfo::new("FATAL".to_owned(), "XX000".to_owned(), error.to_string())
+            }
+            PgWireError::UnsupportedSASLAuthMethod(_) => {
                 ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
             }
             PgWireError::IoError(_) => {
@@ -278,10 +312,16 @@ impl From<PgWireError> for ErrorInfo {
             PgWireError::NotReadyForQuery => {
                 ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
             }
+            PgWireError::InvalidSecretKey => {
+                ErrorInfo::new("FATAL".to_owned(), "08P01".to_owned(), error.to_string())
+            }
             PgWireError::ApiError(_) => {
                 ErrorInfo::new("ERROR".to_owned(), "XX000".to_owned(), error.to_string())
             }
             PgWireError::UserError(info) => *info,
+            PgWireError::InvalidOptionValue(_) => {
+                ErrorInfo::new("ERROR".to_owned(), "22023".to_owned(), error.to_string())
+            }
         }
     }
 }

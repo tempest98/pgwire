@@ -1,3 +1,4 @@
+pub mod format;
 mod from_sql_text;
 mod to_sql_text;
 

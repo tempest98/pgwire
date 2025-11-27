@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use futures::stream;
-use futures::StreamExt;
+use futures::{stream, StreamExt};
 use tokio::net::TcpListener;
 
 use pgwire::api::query::SimpleQueryHandler;
@@ -15,11 +14,7 @@ pub struct DummyProcessor;
 
 #[async_trait]
 impl SimpleQueryHandler for DummyProcessor {
-    async fn do_query<'a, C>(
-        &self,
-        _client: &mut C,
-        _query: &str,
-    ) -> PgWireResult<Vec<Response<'a>>>
+    async fn do_query<C>(&self, _client: &mut C, _query: &str) -> PgWireResult<Vec<Response>>
     where
         C: ClientInfo + Unpin + Send + Sync,
     {

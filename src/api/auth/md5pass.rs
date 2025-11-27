@@ -45,6 +45,7 @@ impl<A: AuthSource, P: ServerParameterProvider> StartupHandler
     {
         match message {
             PgWireFrontendMessage::Startup(ref startup) => {
+                super::protocol_negotiation(client, startup).await?;
                 super::save_startup_parameters_to_metadata(client, startup);
                 client.set_state(PgWireConnectionState::AuthenticationInProgress);
 

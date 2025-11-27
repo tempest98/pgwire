@@ -2,7 +2,7 @@
   description = "Development environment flake";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.05";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     fenix = {
       url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -16,12 +16,15 @@
         pkgs = nixpkgs.legacyPackages.${system};
         pythonEnv = pkgs.python3.withPackages (ps: with ps; [
           psycopg
+          psycopg-c
+          psycopg2
         ]);
         buildInputs = with pkgs; [
           llvmPackages.libclang
-          duckdb.dev
-          duckdb.lib
           sqlite.dev
+          sqlite.out
+          openssl.out
+          libpq
         ];
       in
       {
@@ -44,7 +47,14 @@
             curl
             gnuplot ## for cargo bench
             pythonEnv
-            postgresql
+            postgresql_18.out
+
+            babashka
+            nodejs_24
+            go
+            openssh
+            jbang
+            jdk_headless
           ];
 
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
@@ -53,8 +63,6 @@
             export CXX=clang++
             export SQLITE3_LIB_DIR="${pkgs.sqlite.dev}/lib"
             export SQLITE3_INCLUDE_DIR="${pkgs.sqlite.dev}/include"
-            export DUCKDB_LIB_DIR="${pkgs.duckdb.lib}/lib"
-            export DUCKDB_INCLUDE_DIR="${pkgs.duckdb.dev}/include"
           '';
         };
       });

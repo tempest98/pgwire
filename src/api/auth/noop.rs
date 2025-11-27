@@ -41,6 +41,7 @@ where
         PgWireError: From<<C as Sink<PgWireBackendMessage>>::Error>,
     {
         if let PgWireFrontendMessage::Startup(ref startup) = message {
+            super::protocol_negotiation(client, startup).await?;
             super::save_startup_parameters_to_metadata(client, startup);
             super::finish_authentication0(client, &DefaultServerParameterProvider::default())
                 .await?;
